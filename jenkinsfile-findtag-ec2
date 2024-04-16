@@ -1,0 +1,67 @@
+pipeline {
+    agent any
+    
+    environment {
+        INSTANCE_ID = 'your_instance_id_here'
+    }
+    
+    stages {
+        stage('Find Management IP') {
+            steps {
+                script {
+                    try {
+                        // Describe instance to check existence
+                        sh "aws ec2 describe-instances --instance-ids ${INSTANCE_ID}"
+                    } catch (Exception e) {
+                        error("Instance not found")
+                    }
+                    
+                    // Get subnet ID with tag "tier" as "management"
+                    def subnetId = sh(script: "aws ec2 describe-instances --instance-ids ${INSTANCE_ID} --query 'Reservations[*].Instances[*].NetworkInterfaces[*].SubnetId' --output text", returnStdout: true).trim()
+                    def managementIp
+                    
+                    // Get the management IP from the subnet
+                    if (subnetId) {
+                        managementIp = sh(script: "aws ec2 describe-subnets --subnet-ids ${subnetId} --query 'Subnets[*].Tags[?Key==`tier` && Value==`management`]' --output text", returnStdout: true).trim()
+                    } else {
+                        error("Subnet not found")
+                    }
+                    
+                    // Wait for MyTag tag with value "Completed"
+                    def timeout = 2700  // 45 minutes in seconds
+                    def startTime = env.BUILD_START_TIME ?: System.currentTimeMillis()  // If BUILD_START_TIME is not defined, use current time
+                    def elapsedTime = System.currentTimeMillis() - startTime
+                    
+                    while (elapsedTime < timeout) {
+                        def deployTagFound = sh(script: "aws ec2 describe-instances --instance-ids ${INSTANCE_ID} --query 'Reservations[*].Instances[*].Tags[?Key==`MyTag` && Value==`Completed`]' --output text | grep Completed", returnStatus: true).exitCode == 0
+                        if (deployTagFound) {
+                            break
+                        }
+                        def sleepTime = Math.min(60 * 1000, timeout - elapsedTime)  // Sleep for 1 minute or until timeout
+                        sleep(sleepTime)
+                        elapsedTime = System.currentTimeMillis() - startTime
+                    }
+                    
+                    if (elapsedTime >= timeout) {
+                        error("MyTag tag not found or not completed within 45 minutes")
+                    }
+                    
+                    if (managementIp.isEmpty()) {
+                        error("Management IP not found")
+                    }
+                    
+                    echo "Management IP: ${managementIp}"
+                    
+                    // Optionally, store the management IP in an environment variable for further use
+                    env.HOST_IP = managementIp
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Clean up resources or perform other actions if needed
+        }
+    }
+}
