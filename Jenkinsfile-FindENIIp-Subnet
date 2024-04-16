@@ -1,0 +1,55 @@
+pipeline {
+    agent any
+    
+    environment {
+        INSTANCE_ID = 'your_instance_id_here'
+    }
+    
+    stages {
+        stage('Find Management IP') {
+            steps {
+                script {
+                    try {
+                        // Describe instance to check existence
+                        sh "aws ec2 describe-instances --instance-ids ${INSTANCE_ID}"
+                    } catch (Exception e) {
+                        error("Instance not found")
+                    }
+                    
+                    def managementIp = findManagementIp(INSTANCE_ID)
+                    
+                    if (managementIp) {
+                        echo "Management IP: ${managementIp}"
+                        env.HOST_IP = managementIp
+                    } else {
+                        echo "No management IP found"
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Clean up resources or perform other actions if needed
+        }
+    }
+}
+
+def findManagementIp(instanceId) {
+    def enis = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[*].Instances[*].NetworkInterfaces[*].NetworkInterfaceId' --output text", returnStdout: true).trim().split('\n')
+    
+    for (eni in enis) {
+        def subnetId = sh(script: "aws ec2 describe-network-interfaces --network-interface-ids ${eni} --query 'NetworkInterfaces[*].SubnetId' --output text", returnStdout: true).trim()
+        
+        if (subnetId) {
+            def tierTag = sh(script: "aws ec2 describe-subnets --subnet-ids ${subnetId} --query 'Subnets[*].Tags[?Key==`tier`].Value' --output text", returnStdout: true).trim()
+            
+            if (tierTag == 'management') {
+                return sh(script: "aws ec2 describe-network-interfaces --network-interface-ids ${eni} --query 'NetworkInterfaces[*].PrivateIpAddress' --output text", returnStdout: true).trim()
+            }
+        }
+    }
+    
+    return null
+}
