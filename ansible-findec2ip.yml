@@ -1,0 +1,37 @@
+---
+- name: Wait for Deploy Tag and Find Management IP
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Wait for deploy tag
+      community.aws.ec2_instance_info:
+        instance_ids: "{{ instance_id }}"
+      register: instance_info
+
+    - name: Set timeout
+      set_fact:
+        timeout: "{{ ansible_date_time.epoch + 2700 }}"  # 45 minutes timeout
+
+    - name: Wait for deploy tag completion
+      wait_for:
+        timeout: 60
+        sleep: 60
+        until: instance_info.instances[0].tags | selectattr('Key', 'eq', 'Deploy') | selectattr('Value', 'eq', 'Completed') | list | count > 0
+        retries: "{{ (timeout - ansible_date_time.epoch) // 60 }}"
+      when: ansible_date_time.epoch < timeout
+
+    - name: Find management IP
+      community.aws.ec2_instance_info:
+        instance_ids: "{{ instance_id }}"
+      register: instance_info
+
+    - name: Set management IP
+      set_fact:
+        management_ip: "{{ item.private_ip_address }}"
+      with_items: "{{ instance_info.instances[0].network_interfaces }}"
+      when: item.subnet_id is defined and item.subnet_id | extract('community.aws.ec2_subnet_info', 'subnets', attribute='subnet_id') | selectattr('tags', 'contains', {'Key': 'tier', 'Value': 'management'}) | list | count > 0
+
+    - name: Print management IP
+      debug:
+        msg: "Management IP: {{ management_ip }}"
+      when: management_ip is defined
