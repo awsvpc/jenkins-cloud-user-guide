@@ -7,6 +7,34 @@ pipeline {
     
     stages {
         stage('Find Management IP') {
+           steps { 
+                script {
+                    def deployTagFound = false
+                    def timeout = 45 * 60 * 1000 // 45 minutes in milliseconds
+                    def startTime = System.currentTimeMillis()
+                    
+                    while (!deployTagFound && System.currentTimeMillis() - startTime < timeout) {
+                        def tagsOutput = sh(script: "aws ec2 describe-instances --instance-ids ${INSTANCE_ID} --query 'Reservations[*].Instances[*].Tags[*].Value' --output text", returnStdout: true).trim()
+                        deployTagFound = tagsOutput.contains("Completed")
+                        if (!deployTagFound) {
+                            sleep(60) // Check every 60 seconds
+                        }
+                    }
+                    if (deployTagFound.isEmpty()) {
+                        error("deployTag is not found")
+                    }
+                    // Validate management IP
+                    if (hostIp.trim().isEmpty()) {
+                        error("Management IP is null")
+                    }
+                    
+                    // Print management IP
+                    echo "Management IP: ${hostIp}"
+                    if (!deployTagFound) {
+                        error("Deploy tag not found or not completed within 45 minutes")
+                    }
+                }
+           }
             steps {
                 script {
                     try {
