@@ -24,6 +24,10 @@ pipeline {
         stage('Read Inventory File') {
             steps {
                 script {
+                    def fileExists = sh(returnStatus: true, script: 'test -e inventory.txt')
+                    if (fileExists != 0) {
+                        error('Inventory file not found')
+                    }
                     def fileContents = readFile('inventory.txt')
                     def hostIps = fileContents.tokenize('\n').findAll { it != '[default]' }
                     echo 'Found Host IPs:'
