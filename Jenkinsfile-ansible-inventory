@@ -1,0 +1,25 @@
+pipeline {
+    agent any
+    
+    stages {
+        stage('Check Host IP') {
+            steps {
+                script {
+                    def hostIp = '10.10.10.10' // Replace with your host IP
+                    if (!hostIp) {
+                        error('Invalid host IP: Host IP cannot be empty or null')
+                    }
+                }
+            }
+        }
+        
+        stage('Create Inventory File') {
+            steps {
+                script {
+                    def hostIp = '10.10.10.10' // Replace with your host IP
+                    writeFile file: 'inventory.txt', text: "[default]\n${hostIp}"
+                }
+            }
+        }
+    }
+}
