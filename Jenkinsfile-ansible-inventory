@@ -21,5 +21,17 @@ pipeline {
                 }
             }
         }
+        stage('Read Inventory File') {
+            steps {
+                script {
+                    def fileContents = readFile('inventory.txt')
+                    def hostIps = fileContents.tokenize('\n').findAll { it != '[default]' }
+                    echo 'Found Host IPs:'
+                    for (ip in hostIps) {
+                        echo ip
+                    }
+                }
+            }
+        }
     }
 }
