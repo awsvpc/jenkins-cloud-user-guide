@@ -1,0 +1,54 @@
+pipeline {
+    agent any
+    
+    stages {
+        stage('Terraform Apply') {
+            steps {
+                script {
+                    // Define Terraform workspace
+                    def tfWorkspace = 'default'
+                    
+                    // Authenticate with AWS using Jenkins credentials
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'your-credentials-id', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                        // Execute Terraform commands
+                        sh """
+                            export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+                            export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+                            
+                            cd terraform
+                            
+                            # Initialize Terraform workspace
+                            terraform init -backend-config="role_arn=arn:aws:iam::123456789012:role/your-terraform-role" -backend-config="bucket=your-s3-bucket" -backend-config="key=terraform.tfstate"
+                            
+                            # Select Terraform workspace
+                            terraform workspace select ${tfWorkspace} || terraform workspace new ${tfWorkspace}
+                            
+                            # Apply Terraform changes
+                            terraform apply -auto-approve
+                        """
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+#######################3
+
+provider "aws" {
+  region = "your-region"
+}
+
+terraform {
+  backend "s3" {
+    bucket = "your-s3-bucket"
+    key    = "terraform.tfstate"
+    region = "your-region"
+    role_arn = "arn:aws:iam::123456789012:role/your-terraform-role"
+    session_name = "jenkins"
+    acl = "bucket-owner-full-control"
+    encrypt = true
+  }
+}
+
