@@ -1,0 +1,29 @@
+pipeline {
+    agent any
+    
+    stages {
+        stage('Check ENIs') {
+            steps {
+                script {
+                    def eniIds = sh(script: 'aws ec2 describe-instances --instance-id <your_instance_id> --query "Reservations[].Instances[].NetworkInterfaces[].NetworkInterfaceId" --output text', returnStdout: true).trim().split('\n')
+                    
+                    def mgtFound = false
+                    for (def eniId in eniIds) {
+                        def subnetId = sh(script: 'aws ec2 describe-network-interfaces --network-interface-ids ' + eniId + ' --query "NetworkInterfaces[].SubnetId" --output text', returnStdout: true).trim()
+                        
+                        def deploymentTag = sh(script: 'aws ec2 describe-subnets --subnet-ids ' + subnetId + ' --query "Subnets[].Tags[?Key==\'deployment\'].Value" --output text', returnStdout: true).trim()
+                        
+                        if (deploymentTag == 'mgt') {
+                            mgtFound = true
+                            break
+                        }
+                    }
+                    
+                    if (!mgtFound) {
+                        error('mgt not found')
+                    }
+                }
+            }
+        }
+    }
+}
